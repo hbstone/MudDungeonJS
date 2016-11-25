@@ -1,103 +1,74 @@
-(function (r) {
+import { EventEmitter } from 'events';
+import { createServer } from 'http';
+import io from 'socket.io';
+import fs from 'fs';
+import telnet from 'wez-telnet';
+import { playerSetup } from './Game/Core/player-setup';
+import { player } from './Game/Core/PlayerSetup/player-manager';
+import { time } from './Game/Core/Events/time';
 
-    "use strict";
-    var events = r('events');
-    var eventEmitter = new events.EventEmitter();
-    var modules = {
-        telnet: r('wez-telnet'),
-        playerSetup: r('./Game/Core/player-setup').playerSetup,
-        player: r('./Game/Core/PlayerSetup/player-manager').playerManager,
-        time: r('./Game/Core/Events/time').time
-    };
+const telnetPort = 4000;
+const webPort = 4001;
+const eventEmitter = new EventEmitter();
 
-    var telnetPort =  4000;
-    var WebPort = 4001;
+// create the telnet server
+const server = new telnet.Server((socket) => {
+  console.log('Telnet Player connected');
 
- 
+  socket.emit('welcome', modules.playerSetup.welcome(socket));
+  socket.on('close', () => {
 
-    eventEmitter.on('updateTime', modules.time);
-    eventEmitter.emit('updateTime');
+    // modules.playerSetup.player.playerManager.removePlayer(socket);
+    // modules.playerSetup.player.playerManager.removePlayerFromRoom(socket, pc, region, area, areaId);
 
+    console.log("Telnet Player disconnected");
+  });
 
-    /*
-     Create the telnet server
-     */
+  socket.on('interrupt', function () {
+    socket.write("INTR!");
+    // disconnect on CTRL-C!
+    socket.end();
+  });
+});
 
-     var telnet = modules.telnet;
-     var server = new telnet.Server(function (socket) {
-         console.log('telnet someone connected');
-
-
-         socket.emit('welcome', modules.playerSetup.welcome(socket));
-
-         socket.on('close', function()
-         {
-
-             // modules.playerSetup.player.playerManager.removePlayer(socket);
-             // modules.playerSetup.player.playerManager.removePlayerFromRoom(socket, pc, region, area, areaId);
-
-             console.log("telnet Player left");
-         });
-
-         socket.on('interrupt', function () {
-             socket.write("INTR!");
-             // disconnect on CTRL-C!
-             socket.end();
-         });
-
-
-
-
-     });
-     server.listen(telnetPort);
-
-    /*
-     Create the web Server
-     Temporary code
-     */
-
-    var app = require('http').createServer(handler)
-    var io = require('socket.io')(app);
-    var fs = require('fs');
-
-    app.listen(WebPort);
-
-    function handler (req, res) {
-        fs.readFile(__dirname + '/Public/index.htm',
-            function (err, data) {
-                if (err) {
-                    res.writeHead(500);
-                    return res.end('Error loading index.htm');
-                }
-
-                res.writeHead(200);
-                res.end(data);
-            });
+// create the web server
+const webServer = createServer(() => {
+  fs.readFile(__dirname + '/Public/index.htm', (err, data) => {
+    if (err) {
+      res.writeHead(500);
+      return res.end('Error loading index.htm');
     }
 
-    io.sockets.on('connection', function (socket) {
-        console.log('Web user connected');
+    res.writeHead(200);
+    res.end(data);
+  });
+});
+const socketIo = io(webServer);
 
-        socket.emit('welcome', modules.playerSetup.welcome(socket));
+eventEmitter.on('updateTime', modules.time);
+eventEmitter.emit('updateTime');
 
+server.listen(telnetPort);
+webServer.listen(webPort);
 
-        socket.on('disconnect', function () {
+socketIo.sockets.on('connection', (socket) => {
+  console.log('Web Player connected');
 
-          // modules.playerSetup.player.playerManager.removePlayer(socket);
-           //modules.playerSetup.player.playerManager.removePlayerFromRoom(socket, pc, region, area, areaId);
+  socket.emit('welcome', modules.playerSetup.welcome(socket));
+  socket.on('disconnect', function () {
 
-           console.log("Web Player left");
+    // modules.playerSetup.player.playerManager.removePlayer(socket);
+    //modules.playerSetup.player.playerManager.removePlayerFromRoom(socket, pc, region, area, areaId);
 
-    });
+    console.log("Web Player disconnected");
+  });
+});
 
+socketIo.on('disconnect', () => {
+  console.log('Web Player disconnected');
+});
 
+io.on('disconnect', () => {
+  console.log("Web Player disconnected");
+});
 
-    });
-
-    io.on('disconnect', function()
-    {
-        console.log("Player left");
-    });
-
-
-})(require);
